@@ -10,7 +10,7 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, C
 
 # --- CONFIGURATION ---
 TOKEN = os.environ.get("BOT_TOKEN", "7888111866:AAEct_q2T6O3Rx0IGIu2gpXS9wN8JMIcpWI")
-SERVER_URL = "https://proxy-93ml.onrender.com"
+SERVER_URL = os.environ.get("SERVER_URL", "https://proxy-93ml.onrender.com")
 
 # Force Join Channels (3 Channels)
 CHANNELS = [
@@ -230,13 +230,13 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if not await is_subscribed(context.application, user_id):
         buttons = [
-            [InlineKeyboardButton("📢 BOT UPDATES", url="https://t.me/proxydominates")],
-            [InlineKeyboardButton("📢 SUPPORT", url="https://t.me/midnight_xaura")],
-            [InlineKeyboardButton("📢 BACKUP", url="https://t.me/+9gNiX6EZV1Q4MTU5")],
+            [InlineKeyboardButton("📢 Join Channel 1", url="https://t.me/proxydominates")],
+            [InlineKeyboardButton("📢 Join Channel 2", url="https://t.me/midnight_xaura")],
+            [InlineKeyboardButton("📢 Join Channel 3", url="https://t.me/+9gNiX6EZV1Q4MTU5")],
             [InlineKeyboardButton("✅ Verified (Start Again)", url=f"https://t.me/{(await context.bot.get_me()).username}?start=true")]
         ]
         await update.message.reply_text(
-            "❌ **Access Denied!**\n\nJOIN THE CHANNEL TO USE THE BOT.",
+            "❌ **Access Denied!**\n\nBot use karne ke liye aapko hamare **teenon** channels join karne honge.",
             reply_markup=InlineKeyboardMarkup(buttons)
         )
         return
@@ -263,7 +263,7 @@ async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
     redir = urllib.parse.quote(url)
     link = f"{SERVER_URL}/?id={uid}&redir={redir}"
 
-    await update.message.reply_text(f"✅ **Tracking Link:**\n`{link}`\n\n⚡ Powered by @REVULET)
+    await update.message.reply_text(f"✅ **Tracking Link:**\n`{link}`\n\n⚡ Powered by @REVULET")
 
 def run_flask():
     app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 10000)))
