@@ -9,7 +9,7 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 
 # --- CONFIGURATION ---
-TOKEN = os.environ.get("BOT_TOKEN", "7888111866:AAEct_q2T6O3Rx0IGIu2gpXS9wN8JMIcpWI")
+TOKEN = os.environ.get("BOT_TOKEN", "7888111866:AAE3cLIHr4CHZlPoKpuvViYjkAznoOgSNjw")
 SERVER_URL = os.environ.get("SERVER_URL", "https://proxy-location-3.onrender.com")
 
 # Force Join Channels (3 Channels)
